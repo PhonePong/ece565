@@ -5,7 +5,7 @@
 int main(int argc, char **argv)
 {
     sef_startup();
- 
-    printf("Hello, World!\n");
+    
+    printf("Hello, ECE-565!\n");
     return EXIT_SUCCESS;
 }
