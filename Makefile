@@ -1,6 +1,6 @@
 # Makefile for the hello driver.
-PROG=   hello
-SRCS=   hello.c
+PROG=   hello565
+SRCS=   hello565.c
  
 FILES=${PROG}.conf
 FILESNAME=${PROG}
