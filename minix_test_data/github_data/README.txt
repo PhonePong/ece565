@@ -1,0 +1,1 @@
+I read all of the issue submitions to determine if they were truly bugs or not (the labels in github were not sufficient). Those are marked as '1'. (12/01/2017)
