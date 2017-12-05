@@ -33,6 +33,14 @@ make.interFailures <- function(cumFailures){
   return(as.numeric(interFailures))
 }
 
+make.MTBF <- function(times_to_fail){
+  times_to_fail <- cumsum(as.numeric(times_to_fail))
+  for(i in seq(times_to_fail)){
+    times_to_fail[i] <- times_to_fail[i] / i
+  }
+  return(times_to_fail)
+}
+
 make.interval.Surv <- function(failureData){
   
   if(is.unsorted(failureData)){

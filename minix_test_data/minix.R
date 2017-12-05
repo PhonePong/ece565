@@ -11,11 +11,11 @@ library(XML)
 library(RCurl)
 library(taRifx)
 library(stringr)
+library("scales")
 library ("MASS")
-
 source("misc.R")
 
-# Root links of all closed issue pages (will useseperate loops)
+# Root links of all closed issue pages (will use seperate loops)
 closedURLs <- "https://github.com/Stichting-MINIX-Research-Foundation/minix/issues?page=1&q=is%3Aissue+is%3Aclosed"
 openURLs <- "https://github.com/Stichting-MINIX-Research-Foundation/minix/issues?q=is%3Aopen+is%3Aissue"
 startTime <- Sys.time()
@@ -41,7 +41,7 @@ for(i in closedURLs){
   theLinks <- paste("https://github.com", xpathSApply(doc, "//div[@class = 'border-right border-bottom border-left']//div[@class = 'float-left col-9 p-2 lh-condensed']/a[contains(@class, 'link-gray-dark')]/@href"), sep = "")
   closeDates <- append(closeDates, xpathSApply(doc, "//div[@class = 'repository-content']//span[@class = 'opened-by']//relative-time/@datetime"))
   
-  for ( j in theLinks){
+  for (j in theLinks){
   
     temp <- NULL
     pageData <- getURL(j)
@@ -72,6 +72,9 @@ for(i in openURLs){
   submitDates <- append(submitDates, xpathSApply(doc, "//div[@class = 'd-table table-fixed width-full Box-row--drag-hide position-relative']//span[@class = 'opened-by']/relative-time/@datetime"))
   issueNumber <- append(issueNumber, xpathSApply(doc, "//ul[@class = 'js-navigation-container js-active-navigation-container']//li[contains(@id, 'issue')]/@id"))
 }
+# Time to DownLoad
+TTDL <- Sys.time() - startTime
+
 issueNumber <- gsub("issue_", "", issueNumber)
 
 # Coerce NAs since needs to be same length for dataframe
@@ -84,42 +87,52 @@ submitDates <- strptime(submitDates, tz = "UTC", "%Y-%m-%dT%H:%M:%SZ")
 closeDates <- strptime(closeDates, tz = "UTC", "%Y-%m-%dT%H:%M:%SZ")
 
 # Create the data frame
-x <- data.frame(Issue_Num = issueNumber, Opened_Date = submitDates, Closed_Date = closeDates)
+github_data <- data.frame(Issue_Num = issueNumber, Opened_Date = submitDates, Closed_Date = closeDates)
 # Since the labels column will contain lists... 
-x$Labels <- vector(mode = "list", length = length(issueLabels))
-x$Labels <- issueLabels
-x$Labels[x$Labels == "NULL"] <- NA
+github_data$Labels <- vector(mode = "list", length = length(issueLabels))
+github_data$Labels <- issueLabels
+github_data$Labels[github_data$Labels == "NULL"] <- NA
 
+# ====== Keep only confirmed bugs (I confirmed them, and marked the data with 1, or 0)
 markedData <- read.xlsx("github_data/marked.xlsx", 1, startRow = 1, colIndex = c(1, 2))
-d <- merge(x, markedData, by = 'Issue_Num')
+merged_data <- merge(github_data, markedData, by = 'Issue_Num')
 #View(d)
-# Keep only confirmed bugs (I confirmed them, and marked the data with 1, or 0)
-confirmedBugs <- d[!(d$Marked %in% 0), ]
+confirmedBugs <- merged_data[!(merged_data$Marked %in% 0), ]
 # Sort by date issue was opened, then calculate the cumulative failures
 confirmedBugs <- confirmedBugs[order(confirmedBugs$Opened_Date), ]
 confirmedBugs$Time_To_Fail <- difftime(confirmedBugs$Opened_Date, confirmedBugs$Opened_Date[1], units= "hours")
 
-
 #Calculate MTBF (custom functions)
 confirmedBugs$TBFs <- make.interFailures(confirmedBugs$Time_To_Fail)
 confirmedBugs$MTBF <- make.MTBF(confirmedBugs$TBFs)
+githubMTBFs <- ggplot(data=confirmedBugs, aes(Time_To_Fail, MTBF))+ggtitle("Cumulative MTBF (GitHub Data)")+ labs(x ="SYSTEM AGE (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
 
-githubMTBFs <- ggplot(data=confirmedBugs, aes(Time_To_Fail, MTBF))+ggtitle("Cumulative MTBF")+ labs(x ="System Age (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+# Reliability
+gitData.Surv <- survfit(Surv(Time_To_Fail) ~ 1, data = confirmedBugs)
+gitData.gg <- ggsurvplot(gitData.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (hrs)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+gitData.km <- gitData.gg$plot
+
+# Put plots together for presentation
+R_and_MTBFs <- ggarrange(githubMTBFs, gitData.km, ncol = 1, nrow = 2)
+
+# =================== View of failure frequencies for test data ================================
+
+github_freq <- ggplot(confirmedBugs, aes(Opened_Date, fill=..count..)) +geom_histogram(color='black', alpha=0.9) + scale_x_datetime(breaks = date_breaks("1 months"),
+                                                                                                        labels = date_format("%Y-%b") 
+                                                                                                        ) + ggtitle("GitHub DATA (NEXT RELEASE EFFECT?)")+
+  labs(y="FAILURE DENSITY\n(# Failures Observed)",x="MONTHS") +
+  theme(axis.title = element_text(size=22), axis.text=element_text(size=16), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
+  theme(plot.title = element_text(size = 24))
 
 
-
-Full.Surv <- survfit(Surv(Time_To_Fail) ~ 1, data = confirmedBugs)
-Full.gg <- ggsurvplot(Full.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
-Full.km <- Full.gg$plot
-
-#=============== Using Test Data ============================================================================
+#=============== Using Accelerated Test Data ============================================================================
 
 # Getting the data
 dat_3.2 <- read.xlsx("test_3.2/test_3.2.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
 dat_3.3 <- read.xlsx("test_3.3/test_3.3.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
 dat_3.4 <- read.xlsx("test_3.4/test_3.4.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
 
-#Taking unique Service names only
+#Taking unique failures only
 dat_3.2 <- dat_3.2[row.names(unique(dat_3.2[,c('Version', 'Name')])),]
 dat_3.3 <- dat_3.3[row.names(unique(dat_3.3[,c('Version', 'Name')])),]
 dat_3.4 <- dat_3.4[row.names(unique(dat_3.4[,c('Version', 'Name')])),]
@@ -135,7 +148,7 @@ dat_3.2$TTF <- unlist(by(dat_3.2, dat_3.2$Version, function(x) difftime(x$Time, 
 dat_3.3$TTF <- unlist(by(dat_3.3, dat_3.3$Version, function(x) difftime(x$Time, x$Time[1], units= "secs")))
 dat_3.4$TTF <- unlist(by(dat_3.4, dat_3.4$Version, function(x) difftime(x$Time, x$Time[1], units= "secs")))
 
-# create times between failures
+# create times between failures 
 dat_3.2$TBFs <- make.interFailures(dat_3.2$TTF)
 dat_3.3$TBFs <- make.interFailures(dat_3.3$TTF)
 dat_3.4$TBFs <- make.interFailures(dat_3.4$TTF)
@@ -145,10 +158,34 @@ dat_3.2$MTBF <- make.MTBF(dat_3.2$TBFs)
 dat_3.3$MTBF <- make.MTBF(dat_3.3$TBFs)
 dat_3.4$MTBF <- make.MTBF(dat_3.4$TBFs)
 
-dat_3.2_MTBFs <- ggplot(data=dat_3.2, aes(TTF, MTBF))+ggtitle("MINIX v3.2 Cumulative MTBF")+ labs(x ="System Age (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
-dat_3.3_MTBFs <- ggplot(data=dat_3.3, aes(TTF, MTBF))+ggtitle("MINIX v3.3 Cumulative MTBF")+ labs(x ="System Age (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
-dat_3.4_MTBFs <- ggplot(data=dat_3.4, aes(TTF, MTBF))+ggtitle("MINIX v3.4 Cumulative MTBF")+ labs(x ="System Age (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+# Merge the data set (this is for facet plots, and is replaced with a new merge later)
+all_dat <- rbind(dat_3.2, dat_3.3, dat_3.4)
+Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
+Large.gg <- ggsurvplot(Large.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "CDF", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+ind_test_cdf.km <- Large.gg$plot + facet_wrap(~Version)
 
+Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
+Large.gg <- ggsurvplot(Large.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+ind_test_Reliability.km <- Large.gg$plot + facet_wrap(~Version)
+
+# MTBF plots
+dat_3.2_MTBFs <- ggplot(data=dat_3.2, aes(TTF, MTBF))+ggtitle("v3.2")+ labs(x ="", y = "CUMULATIVE MTBF (s)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+dat_3.3_MTBFs <- ggplot(data=dat_3.3, aes(TTF, MTBF))+ggtitle("v3.3")+ labs(x ="SYSTEM AGE (s)", y = "") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+dat_3.4_MTBFs <- ggplot(data=dat_3.4, aes(TTF, MTBF))+ggtitle("v3.4")+ labs(x ="", y = "") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+all_MTBFs <- ggarrange(dat_3.2_MTBFs, dat_3.3_MTBFs, dat_3.4_MTBFs, ncol = 3, nrow = 1)
+
+cdf_and_MTBFs <- ggarrange(all_MTBFs, ind_test_cdf.km, ncol = 1, nrow = 2)
+R_and_MTBFs <- ggarrange(all_MTBFs, ind_test_Reliability.km, ncol = 1, nrow = 2)
+
+# # CDF plots for individual tests
+# dat_3.2.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.2)
+# dat_3.2.gg <- ggsurvplot(dat_3.2.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
+# dat_3.2.km <- dat_3.2.gg$plot
+# 
+# # RELIABILITY plot for individual tests
+# R_3.2.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.2)
+# R_3.2.gg <- ggsurvplot(R_3.2.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
+# R_3.2.km <- R_3.2.gg$plot
 
 # Calculate running sums of whole test time
 temp <- cumsum(c(dat_3.2$TTF[length(dat_3.2$TTF)], dat_3.3$TBFs))
@@ -156,26 +193,32 @@ temp_1 <- cumsum(c(temp[length(temp)], dat_3.4$TBFs))
 
 dat_3.3$TTF <- temp[-1]
 dat_3.4$TTF <- temp_1[-1]
-
-# Get Rid of censor point I created as start time.
+# Get Rid of censor point I created as start time (= 0).
 dat_3.3 <- dat_3.3[-1, ]
 dat_3.4 <- dat_3.4[-1, ]
-
 # Merge the data set
 all_dat <- rbind(dat_3.2, dat_3.3, dat_3.4)
 
-# Make MTBFs for whole data set
+# Make TBFs for whole data set
 all_dat$TBFs <- make.interFailures(all_dat$TTF)
-
+# make MTBFs
 all_dat$MTBF <- make.MTBF(all_dat$TBFs)
-all_dat_MTBFs <- ggplot(data=all_dat, aes(TTF, MTBF))+ggtitle("MINIX v3.2 - 3.4 Cumulative MTBF")+ labs(x ="System Age (sec)", y = "MTBF (sec)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+# plot
+all_dat_MTBFs <- ggplot(data=all_dat, aes(TTF, MTBF))+ggtitle("v3.2 - 3.4 MTBF (Test)")+ labs(x ="SYSTEM AGE (s)", y = "MTBF (s)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
 
-# Make the CDF plot
-all_dat.Surv <- survfit(Surv(TTF) ~ 1, data = all_dat)
-all_dat.gg <- ggsurvplot(all_dat.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
-all_dat.km <- Full.gg$plot
+# # CDF plot for all test data
+# all_dat.Surv <- survfit(Surv(TTF) ~ 1, data = all_dat)
+# all_dat.gg <- ggsurvplot(all_dat.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
+# all_dat.km <- all_dat.gg$plot
+# RELIABILITY plot for all data
+R_all_dat.Surv <- survfit(Surv(TTF) ~ 1, data = all_dat)
+R_all_dat.gg <- ggsurvplot(R_all_dat.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+R_all_dat.km <- R_all_dat.gg$plot
 
-# View of failure frequency
+all_dat_MTBFs_and_Reliability <- ggarrange(all_dat_MTBFs, R_all_dat.km, ncol = 1, nrow = 2)
+
+
+# =================== View of failure frequencies for test data ================================
 # set up boundaries for intervals/bins
 breaks <- seq(0, 21600, by=600)
 # specify interval/bin labels
@@ -188,58 +231,25 @@ all_dat$bins <- bins
 # Plot frequency to see if we have simulated the next release effect
 freqPlot <- ggplot(data=all_dat, aes(x=all_dat$bins,fill=..count..)) + 
   geom_bar(color='black', alpha=0.9) + ggtitle("NEXT RELEASE EFFECT OBSERVED DURING TEST")+
-  labs(y="# OF FAILURES",x="HYPOTHETICAL MONTH")+
+  labs(y="FAILURE DENSITY\n(# Unique Failures Observed)",x="HYPOTHETICAL MONTHLY")+
   scale_x_discrete(drop=FALSE)+ theme(axis.title = element_text(size=22), axis.text=element_text(size=16), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + theme(plot.title = element_text(size = 24))
 
 
 
-
-
-# incase of misunderstanding...
-drops <- c("Yanran")
-AllData <- AllData[!(AllData$Student %in% drops), ]
-
-
-#Taking unique Service names only
-AllData[row.names(unique(AllData[,c('Version', 'Name')])),]
-
-# cumulative time-to-fail
-AllData$Time_To_Fail <- unlist(by(AllData, AllData$Version, function(x) difftime(x$Time, x$Time[1], units= "secs")))
-
-#plot for version
-Full.Surv <- survfit(Surv(Time_To_Fail) ~ Version, data = AllData)
-Full.gg <- ggsurvplot(Full.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
-Full.km <- Full.gg$plot
-
-
-
-#===========================================================================================
-# If by Student
-
-# using ('Version', 'Name') to make unique() return a data frame
-AllData <- AllData[row.names(unique(AllData[,c('Student', 'Version', 'Name')])),]
-
-#   Sort by Student, then Time
-AllData <- AllData[order(AllData$Student, AllData$Time), ]
-
-# cumulative time-to-fail by student
-AllData$Time_To_Fail <- unlist(by(AllData, AllData$Student, function(x) difftime(x$Time, x$Time[1], units= "secs")))
-
-#Facet plots
-Full.Surv <- survfit(Surv(Time_To_Fail) ~ Student, data = AllData)
-Full.gg <- ggsurvplot(Full.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
-Full.km <- Full.gg$plot + facet_wrap(~Student)
-#===========================================================================================
-
-
-
-#===========================================================================================
-
-#Using survival packages to plot Kaplan Meier
-#Failure Times
-Time_to_Fail.Surv <- Surv(AllData$Time_to_Fail)
-Time_to_Fail.km <- survfit(Time_to_Fail.Surv ~ 1, conf.int = .95, conf.type = "plain")
-#UNRELIABILITY
-p1 <- ggsurvplot(Time.to.Fail.km, ggtheme = theme_gray(base_size = 20), fun = "event", conf.int = TRUE, color = "black", conf.int.fill = "black") + ggtitle("Kaplan Meier: Time to Failure") + labs(x = "HOURS", y = "UNRELIABILITY (CDF)")+coord_cartesian(expand = FALSE) 
-#RELIABILITY
-p2 <- ggsurvplot(Time.to.Fail.km, ggtheme = theme_gray(base_size = 20), conf.int = TRUE, color = "black", conf.int.fill = "black")+ggtitle("Kaplan Meier: Time to Failure") + labs(x = "HOURS", y = "RELIABILITY")+coord_cartesian(expand = FALSE)
+# #===========================================================================================
+# # If want to view by Student results
+# 
+# # using ('Version', 'Name') to make unique() return a data frame
+# AllData <- AllData[row.names(unique(AllData[,c('Student', 'Version', 'Name')])),]
+# 
+# #   Sort by Student, then Time
+# AllData <- AllData[order(AllData$Student, AllData$Time), ]
+# 
+# # cumulative time-to-fail by student
+# AllData$Time_To_Fail <- unlist(by(AllData, AllData$Student, function(x) difftime(x$Time, x$Time[1], units= "secs")))
+# 
+# #Facet plots
+# Full.Surv <- survfit(Surv(Time_To_Fail) ~ Student, data = AllData)
+# Full.gg <- ggsurvplot(Full.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
+# Full.km <- Full.gg$plot + facet_wrap(~Student)
+# #===========================================================================================
