@@ -14,6 +14,7 @@ library(stringr)
 library("scales")
 library ("MASS")
 source("misc.R")
+source("weibull.R")
 
 # Root links of all closed issue pages (will use seperate loops)
 closedURLs <- "https://github.com/Stichting-MINIX-Research-Foundation/minix/issues?page=1&q=is%3Aissue+is%3Aclosed"
@@ -157,6 +158,16 @@ dat_3.4$TBFs <- make.interFailures(dat_3.4$TTF)
 dat_3.2$MTBF <- make.MTBF(dat_3.2$TBFs)
 dat_3.3$MTBF <- make.MTBF(dat_3.3$TBFs)
 dat_3.4$MTBF <- make.MTBF(dat_3.4$TBFs)
+
+# create Data for weibull plots (can't use the zero point with survreg)
+d1 <- data.frame(TTF = dat_3.2$TTF[-1])
+d2 <- data.frame(TTF = dat_3.3$TTF[-1])
+d3 <- data.frame(TTF = dat_3.4$TTF[-1])
+
+# weibull plots (use plot(wp))
+wp1 <- get.weibull.analysis(d1, "MINIX TEST 3.2", line = 'lm')
+wp2 <- get.weibull.analysis(d2, "MINIX TEST 3.3", line = 'lm')
+wp3 <- get.weibull.analysis(d3, "MINIX TEST 3.4", line = 'lm')
 
 # Merge the data set (this is for facet plots, and is replaced with a new merge later)
 all_dat <- rbind(dat_3.2, dat_3.3, dat_3.4)
