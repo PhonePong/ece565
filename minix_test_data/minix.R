@@ -159,12 +159,21 @@ dat_3.2$MTBF <- make.MTBF(dat_3.2$TBFs)
 dat_3.3$MTBF <- make.MTBF(dat_3.3$TBFs)
 dat_3.4$MTBF <- make.MTBF(dat_3.4$TBFs)
 
-# create Data for weibull plots (can't use the zero point with survreg)
+# create Data for weibull plots (can't use the zero point with survreg or fitdistr)
 d1 <- data.frame(TTF = dat_3.2$TTF[-1])
 d2 <- data.frame(TTF = dat_3.3$TTF[-1])
 d3 <- data.frame(TTF = dat_3.4$TTF[-1])
 
-# weibull plots (use plot(wp))
+fit_d1 <- fitdistr(d1$TTF, "weibull")
+fit_d2 <- fitdistr(d2$TTF, "weibull")
+fit_d3 <- fitdistr(d3$TTF, "weibull")
+
+# weibull CDF
+wcdf1 <- ggplot(d1, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "blue", args = list(fit_d1$estimate[1], fit_d1$estimate[2]))
+wcdf2 <- ggplot(d2, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "red", args = list(fit_d2$estimate[1], fit_d2$estimate[2]))
+wcdf3 <- ggplot(d3, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "green", args = list(fit_d3$estimate[1], fit_d3$estimate[2]))
+
+# linearized weibull plots (use plot(wp))
 wp1 <- get.weibull.analysis(d1, "MINIX TEST 3.2", line = 'lm')
 wp2 <- get.weibull.analysis(d2, "MINIX TEST 3.3", line = 'lm')
 wp3 <- get.weibull.analysis(d3, "MINIX TEST 3.4", line = 'lm')
