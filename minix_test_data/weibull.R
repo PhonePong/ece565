@@ -470,21 +470,30 @@ switch.interval <- function(level = NULL){
 }
 
 # returns linear regression line on the data
-make.LM.Line <- function(line = NULL, lvl = NULL){
+# since line is only regression line, should perhaps be BOOLEAN, not 'lm'
+make.LM.Line <- function(line = NULL, line_color = NULL, lvl = NULL){
   if(!('lm' %in% line)){
     return(NULL)
+  }
+  if(is.null(line_color)){
+    line_color = "red"
   }
   show.interval <- switch.interval(lvl)
   return(
     list(
       geom_smooth(
         method = 'lm',
-        #fill = "yellow",
-        #color = "blue",
-        aes(fill = 'red', 
-            color = "red"
-            ),
+        fill = line_color,
+        color = line_color,
+        # ========================
+        # This was not allowing the use of a variable for aesthetics, instead
+        # throws error: Aesthetics must be either length 1 or the same as the data
+        # aes(fill = 'red', 
+        #     color = 'red'
+        #     ),
+        #==========================
         alpha = .3,
+        size = 1,
         se = show.interval,
         level = lvl, 
         show.legend = FALSE,
@@ -501,11 +510,12 @@ make.LM.Line <- function(line = NULL, lvl = NULL){
 }
 
 # wrapper
-get.LM.Line <- function(line = NULL, conf.lvl = NULL){
-  return(make.LM.Line(line, conf.lvl))
+get.LM.Line <- function(line = NULL, line_color = NULL, conf.lvl = NULL){
+  return(make.LM.Line(line, line_color, conf.lvl))
 }
 
 # returns linear regression line on MLE estimate data
+# TODO: ********** THIS MAY BE DEFUNCT *************
 make.MLE.Line <- function(line = NULL, fmla = NULL, weibull.frame = NULL, lvl = NULL, fit = NULL){
   if(!('mle' %in% line)){
     return(NULL)
@@ -542,7 +552,7 @@ get.title <- function(title = NULL){
 }
 
 get.labels <- function(sub.title = "WEIBULL SCALE PROBABILITY CHART", 
-                        x.axis = "MILES", 
+                        x.axis = "TIME (log(s))", 
                         y.axis = "PERCENT FAILURE (%)"){#\n ln(ln( 1/( 1 - F(t) )))
   return(list(
     labs(
@@ -556,6 +566,8 @@ get.labels <- function(sub.title = "WEIBULL SCALE PROBABILITY CHART",
 get.theme <- function(){
   return(list(
     theme(
+      # see https://github.com/tidyverse/ggplot2/blob/master/R/theme-defaults.r
+      # for full list/ usage of default backgrounds
       plot.title = element_text(size = 25,
                                 hjust = .5,
                                 face = "bold",
@@ -575,14 +587,14 @@ get.theme <- function(){
                                  color = "black"),
       plot.margin = unit(c(.5,.5,.5,1),"cm"),
       panel.grid.minor = element_line(color = "white"),
-      panel.background = element_rect(fill = "grey")
+      panel.background = element_rect(fill = "grey92") # theme_gray background
     ),
     coord_cartesian(
       expand = FALSE)
   ))
 }
 
-make.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, conf.lvl = NULL, fit = NULL, restr = NULL ){
+make.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, line_color = NULL, conf.lvl = NULL, fit = NULL, restr = NULL ){
   #newFrame <- get.medianranks(frme)
   #fmla <- frme$MLE.y ~ frme$MLE.x
   weibItems <- list(
@@ -594,7 +606,7 @@ make.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, conf.lvl = NU
     get.labels(),
     get.theme(),
     get.xyScales(frme, restr),
-    get.LM.Line(line, conf.lvl),
+    get.LM.Line(line, line_color, conf.lvl),
     get.MLE.Line(line, fmla, frme, conf.lvl, fit)
   )
   
@@ -608,9 +620,9 @@ make.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, conf.lvl = NU
   return(ggWeib)
 }
 
-get.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, conf.lvl = NULL, fit = NULL, restr = NULL){
+get.ggWeibull <- function(frme = NULL, title = NULL, line = NULL, line_color = NULL, conf.lvl = NULL, fit = NULL, restr = NULL){
   options(scipen = 0)
-  return(make.ggWeibull(frme, title, line, conf.lvl, fit, restr))
+  return(make.ggWeibull(frme, title, line, line_color, conf.lvl, fit, restr))
 }
 
 # This basically unravels the ggplot item
@@ -630,7 +642,7 @@ get.gTable <- function(ggPlt = NULL){
   return(make.gTable(ggPlt))
 }
 
-make.weibull.analysis <- function(failure.data = NULL, title = NULL, line = NULL, conf.lvl = NULL, restr = NULL){
+make.weibull.analysis <- function(failure.data = NULL, title = NULL, line = NULL, line_color = NULL, conf.lvl = NULL, restr = NULL){
   
   # median ranks is specific for weibull plotting (for now)
   failure.data <- get.medianranks(failure.data)
@@ -652,12 +664,12 @@ make.weibull.analysis <- function(failure.data = NULL, title = NULL, line = NULL
   failure.data$MLE.y <- pweibull(failure.data[[1]], weibull.shape, weibull.scale)
   
   # should return a list of items! (instead of just the plot)
-  return(get.gTable(get.ggWeibull(failure.data, title, line, conf.lvl, weibull.fit, restr)))
+  return(get.gTable(get.ggWeibull(failure.data, title, line, line_color, conf.lvl, weibull.fit, restr)))
 }
 
 # main
-get.weibull.analysis <- function(failure.data = NULL, title = NULL, line = NULL, conf.lvl = NULL, restr = NULL){
-  return(make.weibull.analysis(failure.data, title, line, conf.lvl, restr))
+get.weibull.analysis <- function(failure.data = NULL, title = NULL, line = NULL, line_color = NULL, conf.lvl = NULL, restr = NULL){
+  return(make.weibull.analysis(failure.data, title, line, line_color, conf.lvl, restr))
 }
 
 # ============ End Weibull Scale Plotting functions ===========================

@@ -95,21 +95,116 @@ github_data$Labels <- issueLabels
 github_data$Labels[github_data$Labels == "NULL"] <- NA
 
 # ====== Keep only confirmed bugs (I confirmed them, and marked the data with 1, or 0)
-markedData <- read.xlsx("github_data/marked.xlsx", 1, startRow = 1, colIndex = c(1, 2))
+markedData <- read.xlsx("github_data/filter_user_dcb314.xlsx", 1, startRow = 1, colIndex = c(1, 2))
 merged_data <- merge(github_data, markedData, by = 'Issue_Num')
-#View(d)
 confirmedBugs <- merged_data[!(merged_data$Marked %in% 0), ]
+
 # Sort by date issue was opened, then calculate the cumulative failures
+# Here the data is split according to the date v. 3.4 was released
 confirmedBugs <- confirmedBugs[order(confirmedBugs$Opened_Date), ]
-confirmedBugs$Time_To_Fail <- difftime(confirmedBugs$Opened_Date, confirmedBugs$Opened_Date[1], units= "hours")
+
+# confirmedBugs_1 <- confirmedBugs[1:38,]
+# confirmedBugs_2 <- confirmedBugs[39:83,]
+
+confirmedBugs_1 <- confirmedBugs[1:30,]
+confirmedBugs_2 <- confirmedBugs[31:62,]
+
+confirmedBugs$TTF <- unlist(by(confirmedBugs, confirmedBugs$Marked, function(x) difftime(x$Opened_Date, x$Opened_Date[1], units= "hours")))
+confirmedBugs_1$TTF <- unlist(by(confirmedBugs_1, confirmedBugs_1$Marked, function(y) difftime(y$Opened_Date, y$Opened_Date[1], units= "hours")))
+confirmedBugs_2$TTF <- unlist(by(confirmedBugs_2, confirmedBugs_2$Marked, function(z) difftime(z$Opened_Date, z$Opened_Date[1], units= "hours")))
 
 #Calculate MTBF (custom functions)
-confirmedBugs$TBFs <- make.interFailures(confirmedBugs$Time_To_Fail)
+confirmedBugs$TBFs <- make.interFailures(confirmedBugs$TTF)
 confirmedBugs$MTBF <- make.MTBF(confirmedBugs$TBFs)
-githubMTBFs <- ggplot(data=confirmedBugs, aes(Time_To_Fail, MTBF))+ggtitle("Cumulative MTBF (GitHub Data)")+ labs(x ="SYSTEM AGE (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+githubMTBFs <- ggplot(data=confirmedBugs, aes(TTF, MTBF))+ggtitle("Cumulative MTBF (GitHub Data)")+ labs(x ="SYSTEM AGE (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+
+# ============ Weibull plots
+# All Github data
+# drop the 0 and skew point
+# d0 <- data.frame(TTF = confirmedBugs$TTF[c(-1,-2)])
+d0 <- data.frame(TTF = confirmedBugs$TTF[c(-1)])
+
+fit_d0 <- fitdistr(d0$TTF, "weibull")
+
+confirmedBugs.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs)
+confirmedBugs.gg <- ggsurvplot(confirmedBugs.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+confirmedBugs.km <- confirmedBugs.gg$plot + stat_function(fun = pweibull, color = "turquoise4", size = 1, args = list(fit_d0$estimate[1], fit_d0$estimate[2])) + ggtitle("ALL GITHUB MINIX DATA (v. 3.3 ~ 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                                  hjust = .5,
+                                                                                                                                                                                                                                                                                                  face = "bold",
+                                                                                                                                                                                                                                                                                                  color = "black"),
+                                                                                                                                                                                                                                                                        plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                                     hjust = .5,
+                                                                                                                                                                                                                                                                                                     #face = "italic",
+                                                                                                                                                                                                                                                                                                     color = "black"),
+                                                                                                                                                                                                                                                                        axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                    face = "bold",
+                                                                                                                                                                                                                                                                                                    color = "black"),
+                                                                                                                                                                                                                                                                        axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                    face = "bold",
+                                                                                                                                                                                                                                                                                                    color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                                color = "black"),
+                                                                                                                                                                                                                                                                        plot.margin = unit(c(.5,.5,.5,1),"cm"))
+
+
+
+wp0 <- get.weibull.analysis(d0, line = 'lm', line_color = "turquoise4")
+
+# now split the data where the January 2016 (v. 3.4 release) break is
+d0_1 <- data.frame(TTF = confirmedBugs_1[2:30,]$TTF) # ignore the zero and skewed point again
+d0_2 <- data.frame(TTF = confirmedBugs_2[2:32,]$TTF)
+
+fit_d0_1 <- fitdistr(d0_1$TTF, "weibull")
+fit_d0_2 <- fitdistr(d0_2$TTF, "weibull")
+
+confirmedBugs_1.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs_1)
+confirmedBugs_1.gg <- ggsurvplot(confirmedBugs_1.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+confirmedBugs_1.km <- confirmedBugs_1.gg$plot + stat_function(fun = pweibull, color = "magenta", size = 1, args = list(fit_d0_1$estimate[1], fit_d0_1$estimate[2])) + ggtitle("GITHUB MINIX DATA (v. 3.3)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                                                                     hjust = .5,
+                                                                                                                                                                                                                                                                                                                                     face = "bold",
+                                                                                                                                                                                                                                                                                                                                     color = "black"),
+                                                                                                                                                                                                                                                                                                           plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                                                                        hjust = .5,
+                                                                                                                                                                                                                                                                                                                                        #face = "italic",
+                                                                                                                                                                                                                                                                                                                                        color = "black"),
+                                                                                                                                                                                                                                                                                                           axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                                                       face = "bold",
+                                                                                                                                                                                                                                                                                                                                       color = "black"),
+                                                                                                                                                                                                                                                                                                           axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                                                       face = "bold",
+                                                                                                                                                                                                                                                                                                                                       color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                                                                   color = "black"),
+                                                                                                                                                                                                                                                                                                           plot.margin = unit(c(.5,.5,.5,1),"cm"))
+
+
+
+confirmedBugs_2.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs_2)
+confirmedBugs_2.gg <- ggsurvplot(confirmedBugs_2.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+confirmedBugs_2.km <- confirmedBugs_2.gg$plot + stat_function(fun = pweibull, color = "green3", size = 1, args = list(fit_d0_2$estimate[1], fit_d0_2$estimate[2])) + ggtitle("GITHUB MINIX DATA (v. 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                                                                     hjust = .5,
+                                                                                                                                                                                                                                                                                                                                     face = "bold",
+                                                                                                                                                                                                                                                                                                                                     color = "black"),
+                                                                                                                                                                                                                                                                                                           plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                                                                        hjust = .5,
+                                                                                                                                                                                                                                                                                                                                        #face = "italic",
+                                                                                                                                                                                                                                                                                                                                        color = "black"),
+                                                                                                                                                                                                                                                                                                           axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                                                       face = "bold",
+                                                                                                                                                                                                                                                                                                                                       color = "black"),
+                                                                                                                                                                                                                                                                                                           axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                                                                       face = "bold",
+                                                                                                                                                                                                                                                                                                                                       color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                                                                   color = "black"),
+                                                                                                                                                                                                                                                                                                           plot.margin = unit(c(.5,.5,.5,1),"cm"))
+
+
+
+
+
+wp0_1 <- get.weibull.analysis(d0_1, line = 'lm', line_color = "magenta")
+wp0_2 <- get.weibull.analysis(d0_2, line = 'lm', line_color = "green3")
 
 # Reliability
-gitData.Surv <- survfit(Surv(Time_To_Fail) ~ 1, data = confirmedBugs)
+gitData.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs)
 gitData.gg <- ggsurvplot(gitData.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (hrs)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
 gitData.km <- gitData.gg$plot
 
@@ -124,14 +219,12 @@ github_freq <- ggplot(confirmedBugs, aes(Opened_Date, fill=..count..)) +geom_his
   labs(y="FAILURE DENSITY\n(# Failures Observed)",x="MONTHS") +
   theme(axis.title = element_text(size=22), axis.text=element_text(size=16), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
   theme(plot.title = element_text(size = 24))
-
-
 #=============== Using Accelerated Test Data ============================================================================
 
 # Getting the data
 dat_3.2 <- read.xlsx("test_3.2/test_3.2.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
 dat_3.3 <- read.xlsx("test_3.3/test_3.3.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
-dat_3.4 <- read.xlsx("test_3.4/test_3.4.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
+dat_3.4 <- read.xlsx("test_3.4/unique_test_3.4_filter.xlsx", 1, startRow = 1, colIndex = c(1, 2, 3, 4, 5, 6))
 
 #Taking unique failures only
 dat_3.2 <- dat_3.2[row.names(unique(dat_3.2[,c('Version', 'Name')])),]
@@ -139,10 +232,10 @@ dat_3.3 <- dat_3.3[row.names(unique(dat_3.3[,c('Version', 'Name')])),]
 dat_3.4 <- dat_3.4[row.names(unique(dat_3.4[,c('Version', 'Name')])),]
 
 # # incase of misunderstanding...
-# drops <- c("Yanran")
-# dat_3.2 <- dat_3.2[!(dat_3.2$Student %in% drops), ]
-# dat_3.3 <- dat_3.3[!(dat_3.3$Student %in% drops), ]
-# dat_3.4 <- dat_3.4[!(dat_3.4$Student %in% drops), ]
+ drops <- c("Yanran")
+ #dat_3.2 <- dat_3.2[!(dat_3.2$Student %in% drops), ]
+ #dat_3.3 <- dat_3.3[!(dat_3.3$Student %in% drops), ]
+ dat_3.4 <- dat_3.4[!(dat_3.4$Student %in% drops), ]
 
 # cumulative time-to-fail
 dat_3.2$TTF <- unlist(by(dat_3.2, dat_3.2$Version, function(x) difftime(x$Time, x$Time[1], units= "secs")))
@@ -168,25 +261,89 @@ fit_d1 <- fitdistr(d1$TTF, "weibull")
 fit_d2 <- fitdistr(d2$TTF, "weibull")
 fit_d3 <- fitdistr(d3$TTF, "weibull")
 
-# weibull CDF
-wcdf1 <- ggplot(d1, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "blue", args = list(fit_d1$estimate[1], fit_d1$estimate[2]))
-wcdf2 <- ggplot(d2, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "red", args = list(fit_d2$estimate[1], fit_d2$estimate[2]))
-wcdf3 <- ggplot(d3, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "green", args = list(fit_d3$estimate[1], fit_d3$estimate[2]))
+# # weibull CDF
+# wcdf1 <- ggplot(d1, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "blue", args = list(fit_d1$estimate[1], fit_d1$estimate[2]))
+# wcdf2 <- ggplot(d2, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "red", args = list(fit_d2$estimate[1], fit_d2$estimate[2]))
+# wcdf3 <- ggplot(d3, aes(TTF)) + stat_ecdf(geom = "step", pad = FALSE)+stat_function(fun = pweibull, color = "green3", args = list(fit_d3$estimate[1], fit_d3$estimate[2]))
+
+# CDF plots of KM overlaid w/ Weibull for individual tests
+dat_3.2.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.2)
+dat_3.2.gg <- ggsurvplot(dat_3.2.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+dat_3.2.km <- dat_3.2.gg$plot + stat_function(fun = pweibull, color = "blue", size = 1, args = list(fit_d1$estimate[1], fit_d1$estimate[2])) + ggtitle("MINIX TEST (v. 3.2)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                        hjust = .5,
+                                                                                                                                                                                                                                                                                        face = "bold",
+                                                                                                                                                                                                                                                                                        color = "black"),
+                                                                                                                                                                                                                                                              plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                           hjust = .5,
+                                                                                                                                                                                                                                                                                           #face = "italic",
+                                                                                                                                                                                                                                                                                           color = "black"),
+                                                                                                                                                                                                                                                              axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),
+                                                                                                                                                                                                                                                              axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                      color = "black"),
+                                                                                                                                                                                                                                                              plot.margin = unit(c(.5,.5,.5,1),"cm"))
+
+
+dat_3.3.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.3)
+dat_3.3.gg <- ggsurvplot(dat_3.3.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+dat_3.3.km <- dat_3.3.gg$plot + stat_function(fun = pweibull, color = "red", size = 1, args = list(fit_d2$estimate[1], fit_d2$estimate[2])) + ggtitle("MINIX TEST (v. 3.3)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                        hjust = .5,
+                                                                                                                                                                                                                                                                                        face = "bold",
+                                                                                                                                                                                                                                                                                        color = "black"),
+                                                                                                                                                                                                                                                              plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                           hjust = .5,
+                                                                                                                                                                                                                                                                                           #face = "italic",
+                                                                                                                                                                                                                                                                                           color = "black"),
+                                                                                                                                                                                                                                                              axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),
+                                                                                                                                                                                                                                                              axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                      color = "black"),
+                                                                                                                                                                                                                                                              plot.margin = unit(c(.5,.5,.5,1),"cm"))
+
+
+
+dat_3.4.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.4)
+dat_3.4.gg <- ggsurvplot(dat_3.4.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+dat_3.4.km <- dat_3.4.gg$plot + stat_function(fun = pweibull, color = "orange", size = 1, args = list(fit_d3$estimate[1], fit_d3$estimate[2])) + ggtitle("MINIX TEST (v. 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+                                                                                                                                                                                                                                                                                        hjust = .5,
+                                                                                                                                                                                                                                                                                        face = "bold",
+                                                                                                                                                                                                                                                                                        color = "black"),
+                                                                                                                                                                                                                                                              plot.subtitle = element_text(size = 13,
+                                                                                                                                                                                                                                                                                           hjust = .5,
+                                                                                                                                                                                                                                                                                           #face = "italic",
+                                                                                                                                                                                                                                                                                           color = "black"),
+                                                                                                                                                                                                                                                              axis.title.y = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),
+                                                                                                                                                                                                                                                              axis.title.x = element_text(size = 15,
+                                                                                                                                                                                                                                                                                          face = "bold",
+                                                                                                                                                                                                                                                                                          color = "black"),axis.text.x = element_text(size = 10,
+                                                                                                                                                                                                                                                                                                                                      color = "black"),
+                                                                                                                                                                                                                                                              plot.margin = unit(c(.5,.5,.5,1),"cm"))
 
 # linearized weibull plots (use plot(wp))
-wp1 <- get.weibull.analysis(d1, "MINIX TEST 3.2", line = 'lm')
-wp2 <- get.weibull.analysis(d2, "MINIX TEST 3.3", line = 'lm')
-wp3 <- get.weibull.analysis(d3, "MINIX TEST 3.4", line = 'lm')
+wp1 <- get.weibull.analysis(d1, line = 'lm', line_color = "blue")
+wp2 <- get.weibull.analysis(d2, line = 'lm', line_color = "red")
+wp3 <- get.weibull.analysis(d3, line = 'lm', line_color = "orange")
+
+# All the weibull plots
+All_Weib <- ggarrange(dat_3.2.km, dat_3.3.km, dat_3.4.km, wp1, wp2, wp3, ncol = 3, nrow = 2)
 
 # Merge the data set (this is for facet plots, and is replaced with a new merge later)
-all_dat <- rbind(dat_3.2, dat_3.3, dat_3.4)
-Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
-Large.gg <- ggsurvplot(Large.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "CDF", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
-ind_test_cdf.km <- Large.gg$plot + facet_wrap(~Version)
-
-Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
-Large.gg <- ggsurvplot(Large.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
-ind_test_Reliability.km <- Large.gg$plot + facet_wrap(~Version)
+# all_dat <- rbind(dat_3.2, dat_3.3, dat_3.4)
+# Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
+# Large.gg <- ggsurvplot(Large.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "CDF", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+# ind_test_cdf.km <- Large.gg$plot + facet_wrap(~Version)
+# 
+# Large.Surv <- survfit(Surv(TTF) ~ Version, data = all_dat)
+# Large.gg <- ggsurvplot(Large.Surv, conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none", xlab = "SYSTEM AGE (s)", ylab = "RELIABILITY", font.y = c(23, "black"), font.x = c(23, "black"), font.xtickslab = c(14, "plain", "black"), font.ytickslab = c(14, "plain", "black"))
+# ind_test_Reliability.km <- Large.gg$plot + facet_wrap(~Version)
 
 # MTBF plots
 dat_3.2_MTBFs <- ggplot(data=dat_3.2, aes(TTF, MTBF))+ggtitle("v3.2")+ labs(x ="", y = "CUMULATIVE MTBF (s)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
@@ -197,10 +354,6 @@ all_MTBFs <- ggarrange(dat_3.2_MTBFs, dat_3.3_MTBFs, dat_3.4_MTBFs, ncol = 3, nr
 cdf_and_MTBFs <- ggarrange(all_MTBFs, ind_test_cdf.km, ncol = 1, nrow = 2)
 R_and_MTBFs <- ggarrange(all_MTBFs, ind_test_Reliability.km, ncol = 1, nrow = 2)
 
-# # CDF plots for individual tests
-# dat_3.2.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.2)
-# dat_3.2.gg <- ggsurvplot(dat_3.2.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
-# dat_3.2.km <- dat_3.2.gg$plot
 # 
 # # RELIABILITY plot for individual tests
 # R_3.2.Surv <- survfit(Surv(TTF) ~ 1, data = dat_3.2)
@@ -266,10 +419,10 @@ freqPlot <- ggplot(data=all_dat, aes(x=all_dat$bins,fill=..count..)) +
 # AllData <- AllData[order(AllData$Student, AllData$Time), ]
 # 
 # # cumulative time-to-fail by student
-# AllData$Time_To_Fail <- unlist(by(AllData, AllData$Student, function(x) difftime(x$Time, x$Time[1], units= "secs")))
+# AllData$TTF <- unlist(by(AllData, AllData$Student, function(x) difftime(x$Time, x$Time[1], units= "secs")))
 # 
 # #Facet plots
-# Full.Surv <- survfit(Surv(Time_To_Fail) ~ Student, data = AllData)
+# Full.Surv <- survfit(Surv(TTF) ~ Student, data = AllData)
 # Full.gg <- ggsurvplot(Full.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_bw(), legend = "none")
 # Full.km <- Full.gg$plot + facet_wrap(~Student)
 # #===========================================================================================
