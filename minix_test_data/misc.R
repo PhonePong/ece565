@@ -65,6 +65,22 @@ make.interval.Surv <- function(failureData){
   return(Surv(failureData, status))
 }
 
+# use confirmedBugs_1$OBS_HAZ <- 1 / confirmedBugs_1$TBFs for observed Hz. hmm?
+Weibull_Hz <- function(fail_data, b_MLE, e_MLE){
+  return((b_MLE * (fail_data ^ (b_MLE - 1)))/(e_MLE ^ b_MLE))
+}
+
+# Weibull_MTTF <- function(fail_data, b_MLE, e_MLE){
+#   return(1 / (dweibull(fail_data, b_MLE, e_MLE)/pweibull(fail_data, b_MLE, e_MLE)))
+# }
+
+#use cumsum(confirmedBugs_1.Surv$n.event/confirmedBugs_1.Surv$n.risk) for nelson-aalen observed cumulative Hz)
+Weibull_cumHaz <- function(fail_data, b_MLE, e_MLE){
+  return(-pweibull(fail_data, b_MLE, e_MLE, lower.tail = FALSE, log.p = TRUE))
+}
+
+#use -log(confirmedBugs_1.Surv$surv) for 
+
 #this function accepts a column, and a list of 2 items; 
 #regex for grep, & corresponding replacements
 clean.column <- function(column, solutions){

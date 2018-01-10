@@ -127,7 +127,9 @@ d0 <- data.frame(TTF = confirmedBugs$TTF[c(-1)])
 fit_d0 <- fitdistr(d0$TTF, "weibull")
 
 confirmedBugs.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs)
-confirmedBugs.gg <- ggsurvplot(confirmedBugs.Surv, fun = "event", conf.int = TRUE, color = "strata", ggtheme = theme_gray(), legend = "none", palette = "black")
+confirmedBugs.cox <- survfit(coxph(Surv(TTF) ~ 1, data = confirmedBugs))
+confirmedBugs.List <- list(km = confirmedBugs.Surv, cox = confirmedBugs.cox)
+confirmedBugs.gg <- ggsurvplot(confirmedBugs.List, fun = "event", conf.int = TRUE,legend = "right", palette = c("grey40", "grey40"), combine = TRUE, linetype = c(1,2))
 confirmedBugs.km <- confirmedBugs.gg$plot + stat_function(fun = pweibull, color = "turquoise4", size = 1, args = list(fit_d0$estimate[1], fit_d0$estimate[2])) + ggtitle("ALL GITHUB MINIX DATA (v. 3.3 ~ 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
                                                                                                                                                                                                                                                                                                   hjust = .5,
                                                                                                                                                                                                                                                                                                   face = "bold",
@@ -202,6 +204,33 @@ confirmedBugs_2.km <- confirmedBugs_2.gg$plot + stat_function(fun = pweibull, co
 
 wp0_1 <- get.weibull.analysis(d0_1, line = 'lm', line_color = "magenta")
 wp0_2 <- get.weibull.analysis(d0_2, line = 'lm', line_color = "green3")
+
+# MTBF
+confirmedBugs_1$TBFs <- make.interFailures(confirmedBugs_1$TTF)
+confirmedBugs_1$MTBF <- make.MTBF(confirmedBugs_1$TBFs)
+
+confirmedBugs_2$TBFs <- make.interFailures(confirmedBugs_2$TTF)
+confirmedBugs_2$MTBF <- make.MTBF(confirmedBugs_2$TBFs)
+
+
+
+# observed TTF
+ttf.plot <- ggplot(data = confirmedBugs_1, aes(TTF,TBFs))+ geom_point()+geom_line()+geom_line(data = confirmedBugs_1, aes(x=TTF, y=MTBF, colour="magenta"), show_guide = FALSE)+ggtitle("Cumulative MTBF (GitHub Data v. 3.3)")+ labs(x ="SYSTEM AGE (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + theme(plot.title = element_text(size = 24))+ stat_function(fun = Weibull_MTTF, args = list(b_MLE = fit_d0_1$estimate[1], e_MLE = fit_d0_1$estimate[2]), lwd = 2, col = "blue")
+githubMTBFs_1 <- ggplot(data=confirmedBugs_1, aes(TTF, MTBF))+ggtitle("Cumulative MTBF (GitHub Data v. 3.3)")+ labs(x ="SYSTEM AGE (hrs)", y = "MTBF (hrs)") + theme(axis.title = element_text(size=22), axis.text=element_text(size=16)) + geom_point()+geom_line()+ theme(plot.title = element_text(size = 24))
+
+
+
+# Cumulative hazard plot
+ttf.plot <- ggplot(data = confirmedBugs_1, aes(TTF,CUM_Hz))+ geom_point()+geom_line() + stat_function(fun = Weibull_cumHaz, args = list(b_MLE = fit_d0_1$estimate[1], e_MLE = fit_d0_1$estimate[2]), lwd = 2, col = "blue")
+
+ttf.plot <- ggplot(data = confirmedBugs_2, aes(TTF,TBFs))+ geom_point()+geom_line()
+
+
+
+# observed haz (TODO)
+ttf.plot <- ggplot(data = confirmedBugs_1, aes(TTF,OBS_HAZ))+ geom_point()+geom_line()+coord_cartesian(ylim = c(0, .02))
+
+
 
 # Reliability
 gitData.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs)
@@ -389,6 +418,8 @@ R_all_dat.gg <- ggsurvplot(R_all_dat.Surv, conf.int = TRUE, color = "strata", gg
 R_all_dat.km <- R_all_dat.gg$plot
 
 all_dat_MTBFs_and_Reliability <- ggarrange(all_dat_MTBFs, R_all_dat.km, ncol = 1, nrow = 2)
+
+
 
 
 # =================== View of failure frequencies for test data ================================
