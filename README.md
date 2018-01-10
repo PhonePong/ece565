@@ -9,7 +9,7 @@ Should Be theme_gray                                                            
 
 
 
-Should Be theme_gray                                                                                                             |
+Undesired Output                                                                                                                 |
 :-------------------------------------------------------------------------------------------------------------------------------:|
 ![Undesired Result](https://github.com/PhonePong/ece565/blob/master/minix_test_data/ggsurvplot_issue/not_what_I_wanted.png)      |
 
