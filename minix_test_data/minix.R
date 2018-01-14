@@ -40,7 +40,7 @@ for(i in closedURLs){
   doc <- htmlParse(xData)
   # get links to each issue ticket page for submit dates
   theLinks <- paste("https://github.com", xpathSApply(doc, "//div[@class = 'border-right border-bottom border-left']//div[@class = 'float-left col-9 p-2 lh-condensed']/a[contains(@class, 'link-gray-dark')]/@href"), sep = "")
-  closeDates <- append(closeDates, xpathSApply(doc, "//div[@class = 'repository-content']//span[@class = 'opened-by']//relative-time/@datetime"))
+  closeDates <- append(closeDates, xpathSApply(doc, "//@datetime"))#div[@class = 'repository-content']//span[@class = 'opened-by']//relative-time
   
   for (j in theLinks){
   
@@ -48,9 +48,9 @@ for(i in closedURLs){
     pageData <- getURL(j)
     doc <- htmlParse(pageData)
     submitDates <- append(submitDates, xpathSApply(doc, "//div[@class = 'TableObject-item TableObject-item--primary']//relative-time/@datetime"))
-    issueNumber <- append(issueNumber, xpathSApply(doc, "//div[@class = 'repository-content']//span[@class = 'gh-header-number']/text()"))
+    issueNumber <- append(issueNumber, xpathSApply(doc, "//span[@class = 'gh-header-number']/text()"))#//div[@class = 'repository-content']
     
-    temp <- xpathSApply(doc, "//div[@class = 'repository-content']//div[@class = 'discussion-sidebar']//div[@class = 'labels css-truncate']/a/text()")
+    temp <- xpathSApply(doc, "//div[@class = 'labels css-truncate']/a//text()")#/span[@class = 'labels css-truncate-target']
     if(length(temp) == 0){
       
       issueLabels <- c(issueLabels, NA)
@@ -94,6 +94,9 @@ github_data$Labels <- vector(mode = "list", length = length(issueLabels))
 github_data$Labels <- issueLabels
 github_data$Labels[github_data$Labels == "NULL"] <- NA
 
+# Export the data 
+write.xlsx(github_data, file = paste ("github_data/",Sys.time(), ".xlsx", sep=""), sheetName = "github")
+
 # ====== Keep only confirmed bugs (I confirmed them, and marked the data with 1, or 0)
 markedData <- read.xlsx("github_data/filter_user_dcb314.xlsx", 1, startRow = 1, colIndex = c(1, 2))
 merged_data <- merge(github_data, markedData, by = 'Issue_Num')
@@ -107,7 +110,7 @@ confirmedBugs <- confirmedBugs[order(confirmedBugs$Opened_Date), ]
 # confirmedBugs_2 <- confirmedBugs[39:83,]
 
 confirmedBugs_1 <- confirmedBugs[1:30,]
-confirmedBugs_2 <- confirmedBugs[31:62,]
+confirmedBugs_2 <- confirmedBugs[31:63,]
 
 confirmedBugs$TTF <- unlist(by(confirmedBugs, confirmedBugs$Marked, function(x) difftime(x$Opened_Date, x$Opened_Date[1], units= "hours")))
 confirmedBugs_1$TTF <- unlist(by(confirmedBugs_1, confirmedBugs_1$Marked, function(y) difftime(y$Opened_Date, y$Opened_Date[1], units= "hours")))
@@ -128,9 +131,9 @@ fit_d0 <- fitdistr(d0$TTF, "weibull")
 
 confirmedBugs.Surv <- survfit(Surv(TTF) ~ 1, data = confirmedBugs)
 confirmedBugs.cox <- survfit(coxph(Surv(TTF) ~ 1, data = confirmedBugs))
-confirmedBugs.List <- list(km = confirmedBugs.Surv, cox = confirmedBugs.cox)
-confirmedBugs.gg <- ggsurvplot(confirmedBugs.List, fun = "event", conf.int = TRUE,legend = "right", palette = c("grey40", "grey40"), combine = TRUE, linetype = c(1,2))
-confirmedBugs.km <- confirmedBugs.gg$plot + stat_function(fun = pweibull, color = "turquoise4", size = 1, args = list(fit_d0$estimate[1], fit_d0$estimate[2])) + ggtitle("ALL GITHUB MINIX DATA (v. 3.3 ~ 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
+confirmedBugs.List <- list(km = confirmedBugs.Surv, cox = confirmedBugs.cox)                    #legend.title = "Legend", legend.labs = c("Kaplan-Meier", "Cox PH")
+confirmedBugs.gg <- ggsurvplot(confirmedBugs.List, fun = "event", conf.int = TRUE, legend = "right", palette = c("grey30", "grey30"), combine = TRUE, linetype = c(1,2), ggtheme = theme_grey())
+confirmedBugs.km <- confirmedBugs.gg$plot + stat_function(fun = pweibull, color = "turquoise4", size = 1, args = list(fit_d0$estimate[1], fit_d0$estimate[2]), aes(colour = "line1")) + scale_colour_manual("Lgend title", values = c("Kaplan-Meier", "Cox PH", "green")) + ggtitle("ALL GITHUB MINIX DATA (v. 3.3 ~ 3.4)") + labs(subtitle = "CUMULATIVE DIST. FUNCTION vs. TIME", x ="TIME (s)", y = "CDF") + theme(plot.title = element_text(size = 25,
                                                                                                                                                                                                                                                                                                   hjust = .5,
                                                                                                                                                                                                                                                                                                   face = "bold",
                                                                                                                                                                                                                                                                                                   color = "black"),
@@ -143,8 +146,9 @@ confirmedBugs.km <- confirmedBugs.gg$plot + stat_function(fun = pweibull, color 
                                                                                                                                                                                                                                                                                                     color = "black"),
                                                                                                                                                                                                                                                                         axis.title.x = element_text(size = 15,
                                                                                                                                                                                                                                                                                                     face = "bold",
-                                                                                                                                                                                                                                                                                                    color = "black"),axis.text.x = element_text(size = 10,
-                                                                                                                                                                                                                                                                                                                                                color = "black"),
+                                                                                                                                                                                                                                                                                                    color = "black"),
+                                                                                                                                                                                                                                                                        axis.text.x = element_text(size = 10, 
+                                                                                                                                                                                                                                                                                                   color = "black"),
                                                                                                                                                                                                                                                                         plot.margin = unit(c(.5,.5,.5,1),"cm"))
 
 
